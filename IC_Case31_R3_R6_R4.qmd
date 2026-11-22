@@ -654,8 +654,10 @@ This analysis addressed R3, R6, and the three components of R4.
 
 Overall, the credit union can build on generally favorable employee evaluations while investigating lower-rated operational characteristics and potential opportunities for continuous improvement.
 
+
+
 ## Appendix: GitHub Links
 
-- **GitHub Repository:** ADD YOUR GITHUB REPOSITORY URL
-- **GitHub Pages:** ADD YOUR PUBLISHED HTML URL
+- **GitHub Repository:** [View GitHub Repository](https://github.com/carmenjimenez97/case31-reliability-factor-analysis)
 
+- **GitHub Pages:** [View Published HTML Report](https://carmenjimenez97.github.io/case31-reliability-factor-analysis/IC_Case31_R3_R6_R4.html)
