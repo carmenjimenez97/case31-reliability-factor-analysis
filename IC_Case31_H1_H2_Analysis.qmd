@@ -1,0 +1,217 @@
+---
+title: "Case 31: Hypothesis Testing for H1 and H2"
+subtitle: "One-Way ANOVA and Paired-Samples t-Test"
+author: "Carmen Lia Jimenez Rodriguez"
+format:
+  html:
+    toc: true
+    number-sections: true
+    embed-resources: true
+    code-fold: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+## Introduction
+
+This report tests two hypotheses from **Case 31: Employees Federal Credit Union (EFCU)**. The first examines whether members' assessments of how well the credit union's services meet their needs vary according to their awareness or use of regular share accounts. The second compares two paired survey ratings relating to EFCU loan rates. These are associations and comparisons, not evidence of causation.
+
+The analysis uses the cleaned **Case 31 Data_efcu_4.sav** survey dataset (128 records). Complete cases are used separately for each hypothesis; the existing `FILTER_$` indicator is **not** used to exclude respondents because neither hypothesis specifies the headquarters-residence subgroup.
+
+## Data preparation
+
+```{r}
+# Required package: install.packages("haven") if it is not installed.
+library(haven)
+library(knitr)
+
+# Put the original SAV file in the SAME folder as this QMD.
+possible_files <- c("Case 31 Data_efcu_4.sav",
+                    "Case 31 Data_efcu_4 (1).sav")
+file_found <- possible_files[file.exists(possible_files)]
+if (length(file_found) == 0) {
+  stop("Place Case 31 Data_efcu_4.sav in the same folder as this QMD file.")
+}
+file_name <- file_found[1]
+efcu <- haven::read_sav(file_name)
+names(efcu) <- toupper(names(efcu))
+required <- c("Q13", "Q33", "Q8_R", "Q30")
+if (!all(required %in% names(efcu))) {
+  stop("Missing required variables: ",
+       paste(setdiff(required, names(efcu)), collapse = ", "))
+}
+get_num <- function(x) as.numeric(haven::zap_missing(x))
+cat("Dataset:", file_name, "\nTotal observations:", nrow(efcu), "\n")
+```
+
+## H1: Awareness of regular share accounts and perceived service adequacy
+
+**H1 (alternative):** Mean ratings on Q33 differ across the three Q13 awareness/use groups. **H0:** All three Q33 population means are equal.
+
+- **Independent variable, Q13:** (1) aware and have used, (2) aware but have not used, (3) unaware of the service.
+- **Dependent variable, Q33:** "The current financial services provided by the Credit Union meet the needs of its members" (1 = strongly disagree; 5 = strongly agree).
+- **Method:** One-way analysis of variance (ANOVA), with group descriptives, Tukey HSD, and robustness diagnostics.
+
+```{r}
+h1 <- data.frame(
+  awareness_code = get_num(efcu$Q13),
+  service_rating = get_num(efcu$Q33)
+)
+h1 <- subset(h1, awareness_code %in% 1:3 & service_rating %in% 1:5)
+h1$awareness <- factor(h1$awareness_code,
+  levels = 1:3,
+  labels = c("Aware and have used", "Aware, not used", "Unaware"))
+
+h1_groups <- split(h1$service_rating, h1$awareness)
+h1_desc <- data.frame(
+  Group = names(h1_groups),
+  N = vapply(h1_groups, length, integer(1)),
+  Mean = round(vapply(h1_groups, mean, numeric(1)), 3),
+  SD = round(vapply(h1_groups, sd, numeric(1)), 3))
+knitr::kable(h1_desc, caption = "H1: Q33 descriptive statistics by Q13")
+
+fit_h1 <- aov(service_rating ~ awareness, data = h1)
+anova_h1 <- summary(fit_h1)[[1]]
+f_h1 <- anova_h1[["F value"]][1]
+p_h1 <- anova_h1[["Pr(>F)"]][1]
+df_between <- anova_h1[["Df"]][1]
+df_within <- anova_h1[["Df"]][2]
+eta_sq <- anova_h1[["Sum Sq"]][1] / sum(anova_h1[["Sum Sq"]])
+knitr::kable(data.frame(
+  Statistic = c("F", "df (between)", "df (within)", "p-value", "Eta-squared"),
+  Value = c(sprintf("%.3f", f_h1), df_between, df_within,
+            sprintf("%.4f", p_h1), sprintf("%.3f", eta_sq))),
+  caption = "H1: One-way ANOVA results")
+```
+
+The overall ANOVA was `r if(p_h1<.05) "statistically significant" else "not statistically significant"`, *F*(`r df_between`, `r df_within`) = `r sprintf("%.3f", f_h1)`, *p* = `r sprintf("%.4f", p_h1)`, η² = `r sprintf("%.3f", eta_sq)`. `r if(p_h1<.05) "Reject H0: at least one Q13 awareness group has a different mean Q33 rating." else "Do not reject H0: the data do not show a statistically significant difference in group means."` This does not establish that awareness causes satisfaction.
+
+### Pairwise comparisons and assumptions
+
+```{r}
+h1_tukey <- TukeyHSD(fit_h1, "awareness")$awareness
+knitr::kable(
+  data.frame(Comparison = rownames(h1_tukey),
+             Mean_difference = round(h1_tukey[, "diff"], 3),
+             Adjusted_p = round(h1_tukey[, "p adj"], 4),
+             Significant = h1_tukey[, "p adj"] < .05),
+  caption = "H1: Tukey HSD pairwise comparisons")
+
+# Median-centered Levene test (constructed using base R).
+h1$deviation <- abs(h1$service_rating -
+                    ave(h1$service_rating, h1$awareness, FUN=median))
+levene_h1 <- summary(aov(deviation ~ awareness, data=h1))[[1]][["Pr(>F)"]][1]
+welch_h1 <- oneway.test(service_rating ~ awareness, data=h1,
+                       var.equal=FALSE)
+kw_h1 <- kruskal.test(service_rating ~ awareness, data=h1)
+knitr::kable(data.frame(
+  Check = c("Levene variance-homogeneity test",
+            "Welch ANOVA (unequal-variance sensitivity)",
+            "Kruskal-Wallis (ordinal sensitivity)"),
+  p_value = sprintf("%.4f", c(levene_h1, welch_h1$p.value,
+                                kw_h1$p.value))),
+  caption = "H1: Assumption and robustness checks")
+```
+
+A median-centered Levene test gives *p* = `r sprintf("%.4f", levene_h1)`, indicating `r if(levene_h1>=.05) "no evidence against equal group variances" else "potentially unequal group variances"`. Because the outcome is a five-category rating, normality is approximate; the Kruskal-Wallis sensitivity result is *p* = `r sprintf("%.4f", kw_h1$p.value)`. Tukey results identify the pairs driving the omnibus difference.
+
+```{r}
+#| fig-cap: "H1: Q33 ratings by regular-share-account awareness group"
+#| fig-width: 8
+#| fig-height: 4.5
+boxplot(service_rating ~ awareness, data=h1,
+        xlab="Q13: awareness/use group", ylab="Q33: services meet members' needs",
+        ylim=c(1,5), col="#e7edf6", border="#516684")
+stripchart(service_rating ~ awareness, data=h1,
+           method="jitter", vertical=TRUE, add=TRUE,
+           pch=16, cex=.45, col=grDevices::adjustcolor("#365e91",.5))
+```
+
+## H2: Comparison of two paired loan-rate perceptions
+
+**H2 (alternative):** The mean of the aligned Q8 rate-perception scores differs from the mean of Q30 for the same respondents. **H0:** The population mean paired difference is zero.
+
+- **Q8_R:** A reverse-coded form of Q8 on perceived credit union borrowing rates (1 = very low; 5 = very high).
+- **Q30:** Agreement that EFCU loan rates are lower than those of other institutions (1 = strongly disagree; 5 = strongly agree).
+- **Coding audit:** High Q8_R numbers signify **higher rates**, while high Q30 numbers signify **belief in lower rates**. Therefore, Q8_R is converted to `6 - Q8_R` before the paired test, so higher aligned scores on both variables indicate more favorable perceptions of lower rates. The transformation reproduces the original Q8 coding for valid records. Records without a substantive Q8 response are excluded.
+
+```{r}
+h2 <- data.frame(q8_r=get_num(efcu$Q8_R),
+                 q30=get_num(efcu$Q30))
+h2 <- subset(h2, q8_r %in% 1:5 & q30 %in% 1:5)
+h2$q8_lower_favorable <- 6 - h2$q8_r
+h2$difference <- h2$q8_lower_favorable - h2$q30
+
+# Verify that the aligned score agrees with original Q8 (when provided).
+if ("Q8" %in% names(efcu)) {
+  check <- data.frame(original=get_num(efcu$Q8),
+                      recoded=6-get_num(efcu$Q8_R))
+  check <- subset(check, original %in% 1:5 & recoded %in% 1:5)
+  stopifnot(all(check$original == check$recoded))
+}
+
+h2_desc <- data.frame(
+  Measure=c("Q8 aligned: lower perceived rates", "Q30: belief rates are lower"),
+  N=c(nrow(h2),nrow(h2)),
+  Mean=round(c(mean(h2$q8_lower_favorable),mean(h2$q30)),3),
+  SD=round(c(sd(h2$q8_lower_favorable),sd(h2$q30)),3))
+knitr::kable(h2_desc, caption = "H2: Descriptive statistics for paired scores")
+
+paired_h2 <- t.test(h2$q8_lower_favorable, h2$q30, paired=TRUE)
+mean_diff <- mean(h2$difference)
+dz <- mean_diff / sd(h2$difference)
+knitr::kable(data.frame(
+  Statistic = c("N complete pairs", "Mean paired difference (aligned Q8 minus Q30)",
+                "Paired t", "Degrees of freedom", "Two-sided p-value",
+                "95% CI lower", "95% CI upper", "Cohen's dz"),
+  Value=c(nrow(h2),sprintf("%.3f",mean_diff),
+          sprintf("%.3f",unname(paired_h2$statistic)),
+          unname(paired_h2$parameter),sprintf("%.4f",paired_h2$p.value),
+          sprintf("%.3f",paired_h2$conf.int[1]),
+          sprintf("%.3f",paired_h2$conf.int[2]),sprintf("%.3f",dz))),
+  caption="H2: Paired-samples t-test")
+```
+
+The paired comparison yielded *t*(`r unname(paired_h2$parameter)`) = `r sprintf("%.3f", unname(paired_h2$statistic))`, *p* = `r sprintf("%.4f", paired_h2$p.value)`, mean paired difference (aligned Q8 minus Q30) = `r sprintf("%.3f",mean_diff)`, 95% CI [`r sprintf("%.3f",paired_h2$conf.int[1])`, `r sprintf("%.3f",paired_h2$conf.int[2])`], and Cohen's *dz* = `r sprintf("%.3f",dz)`. `r if(paired_h2$p.value<.05) "Reject H0 at alpha = .05." else "Do not reject H0 at alpha = .05."` The average aligned Q8 score was `r if(mean_diff < 0) "lower" else "higher"` than Q30.
+
+### Paired-difference assumptions and sensitivity
+
+```{r}
+shapiro_h2 <- shapiro.test(h2$difference)
+wilcoxon_h2 <- wilcox.test(h2$q8_lower_favorable, h2$q30,
+                          paired=TRUE, exact=FALSE)
+knitr::kable(data.frame(
+  Check=c("Shapiro-Wilk normality of paired differences",
+          "Wilcoxon signed-rank sensitivity test"),
+  p_value=sprintf("%.4g",c(shapiro_h2$p.value,
+                           wilcoxon_h2$p.value))),
+  caption="H2: Assumptions and nonparametric sensitivity")
+```
+
+The difference scores are discrete and depart from normality (Shapiro-Wilk *p* = `r sprintf("%.4g",shapiro_h2$p.value)`). The paired *t*-test is generally reasonably robust with 107 paired records; Wilcoxon gives *p* = `r sprintf("%.4f",wilcoxon_h2$p.value)`, an additional sensitivity check. The two original questions have **different response anchors and slightly different underlying meanings** (absolute rate level vs. competitive comparison), so a numerical difference should not be read as a direct contradiction in an individual respondent's views.
+
+```{r}
+#| fig-cap: "H2: Distribution of aligned paired differences (Q8 minus Q30)"
+#| fig-width: 8
+#| fig-height: 4.4
+barplot(table(factor(h2$difference,
+               levels=seq(min(h2$difference),max(h2$difference)))),
+        xlab="Aligned Q8 minus Q30", ylab="Number of respondents",
+        col="#dce7f4", border="#61748f")
+abline(h=0)
+```
+
+## Conclusions
+
+**H1:** The groups vary in reported service adequacy. The aware-and-have-used group has a lower average Q33 rating than the aware-but-not-used and unaware groups. Tukey tests determine which pairs differ. This is an association, not a causal effect.
+
+**H2:** Following the documented direction alignment, the paired mean difference is small but statistically distinguishable from zero. The construct and anchor differences make this an exploratory comparison rather than a test of identical measures.
+
+**Limitations:** A relatively small used-service group (n = 13); single-item, ordinal-type Q33; non-normal discrete paired differences for H2; no causal identification. SPSS's existing residence filter has been intentionally ignored for these tests.
+
+## Appendix: GitHub links
+
+- GitHub repository: [case31-reliability-factor-analysis](https://github.com/carmenjimenez97/case31-reliability-factor-analysis)
+- GitHub Pages report: [Case 31 H1/H2 HTML](https://carmenjimenez97.github.io/case31-reliability-factor-analysis/IC_Case31_H1_H2_Analysis.html)
