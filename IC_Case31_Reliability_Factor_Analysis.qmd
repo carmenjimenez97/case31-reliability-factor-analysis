@@ -1,0 +1,397 @@
+
+---
+title: "Case 31: Reliability and Exploratory Factor Analysis (R3 and R6)"
+author: "Carmen Lia Jimenez"
+format:
+  html:
+    toc: true
+    number-sections: true
+    embed-resources: true
+    code-fold: false
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+## Introduction
+
+This report assesses the measurement quality of two multi-item scales in the Employees Federal Credit Union (Case 31) survey: **R3**, attitudes toward employee proficiency (Q3–Q6), and **R6**, operational effectiveness (Q31–Q34 only).
+
+Cronbach's alpha and corrected item-total correlations are used to evaluate internal consistency. Exploratory factor analysis (EFA) is used to examine whether items within each scale measure one underlying construct.
+
+A combined two-factor analysis also provides an exploratory assessment of discriminant validity.
+
+The purpose of this report is to determine whether composite scores are appropriate for subsequent analyses, rather than directly answering the substantive research questions R3 and R6.
+
+## Data Preparation
+
+```{r}
+# Install packages once in the Console if needed:
+# install.packages(c("haven", "psych", "knitr", "GPArotation"))
+
+library(haven)
+library(psych)
+library(knitr)
+
+# Load the Case 31 dataset
+efcu <- read_sav("Case 31 Data_efcu_4.sav")
+
+# Select items for R3 and R6
+r3_names <- paste0("q", 3:6)
+r6_names <- paste0("q", 31:34)
+all_names <- c(r3_names, r6_names)
+
+# Convert SPSS labelled responses to numeric values
+items <- as.data.frame(lapply(efcu[all_names], function(x) {
+  as.numeric(haven::zap_missing(x))
+}))
+
+# Remove incomplete responses for each scale
+r3_items <- na.omit(items[r3_names])
+r6_items <- na.omit(items[r6_names])
+
+cat("Total respondents:", nrow(efcu), "\n")
+cat("Complete cases for R3:", nrow(r3_items), "\n")
+cat("Complete cases for R6:", nrow(r6_items), "\n")
+```
+
+## R3: Employee Proficiency (Q3–Q6)
+
+### Reliability Analysis
+
+The reliability analysis assesses whether Q3 through Q6 consistently measure attitudes toward employee proficiency.
+
+Cronbach's alpha is used to evaluate internal consistency. A coefficient of approximately 0.70 or higher is commonly considered acceptable for exploratory research, although this threshold should not be treated as an absolute rule.
+
+```{r}
+# Calculate Cronbach's alpha for R3
+r3_alpha <- psych::alpha(r3_items, check.keys = FALSE)
+
+# Display reliability statistics
+knitr::kable(
+  data.frame(
+    Measure = "Cronbach's alpha",
+    Value = round(r3_alpha$total$raw_alpha, 3)
+  ),
+  caption = "R3 Reliability Analysis"
+)
+
+# Item-total correlations and alpha if deleted
+knitr::kable(
+  data.frame(
+    Item = r3_names,
+    Corrected_Item_Total = round(
+      r3_alpha$item.stats$r.drop, 3
+    ),
+    Alpha_If_Removed = round(
+      r3_alpha$alpha.drop$raw_alpha, 3
+    )
+  ),
+  caption = "R3 Item-Level Reliability"
+)
+```
+
+**Interpretation:**
+
+The Cronbach's alpha for R3 is **`r sprintf("%.3f", r3_alpha$total$raw_alpha)`**.
+
+`r if (r3_alpha$total$raw_alpha >= 0.70) "This result indicates acceptable internal consistency based on the commonly used 0.70 guideline." else "This result falls below the commonly used 0.70 guideline, suggesting that the items may not consistently measure one underlying construct."`
+
+Corrected item-total correlations help identify questions that may not align well with the overall scale. Values below approximately 0.30 should be investigated.
+
+### Exploratory Factor Analysis
+
+Factor analysis is used to assess convergent validity by examining whether Q3 through Q6 load strongly onto a common factor.
+
+```{r}
+# One-factor exploratory factor analysis
+r3_fa <- psych::fa(
+  r3_items,
+  nfactors = 1,
+  rotate = "none",
+  fm = "minres"
+)
+
+# Extract factor loadings
+r3_load <- as.numeric(
+  unclass(r3_fa$loadings)[, 1]
+)
+
+# Display factor loadings and communalities
+knitr::kable(
+  data.frame(
+    Item = r3_names,
+    Factor_Loading = round(r3_load, 3),
+    Communality = round(
+      as.numeric(r3_fa$communality), 3
+    )
+  ),
+  caption = "R3 Exploratory Factor Analysis"
+)
+
+# Explained variance
+cat(
+  "Variance explained:",
+  sprintf(
+    "%.1f%%",
+    100 * r3_fa$Vaccounted["Proportion Var", 1]
+  )
+)
+```
+
+**Interpretation:**
+
+The one-factor solution explains **`r sprintf("%.1f%%", 100 * r3_fa$Vaccounted["Proportion Var", 1])`** of the total item variance.
+
+The lowest absolute factor loading is **`r sprintf("%.3f", min(abs(r3_load)))`**.
+
+Factor loadings of approximately 0.40 or greater provide preliminary evidence that the items share a common underlying factor. Communalities indicate how much variance in each question is explained by that factor.
+
+### R3: Composite Scale Decision
+
+```{r}
+# Evaluate statistical support for a composite scale
+r3_ok <- isTRUE(
+  is.finite(r3_alpha$total$raw_alpha) &&
+  r3_alpha$total$raw_alpha >= 0.70 &&
+  all(r3_alpha$item.stats$r.drop >= 0.30) &&
+  all(abs(r3_load) >= 0.40) &&
+  (all(r3_load > 0) || all(r3_load < 0))
+)
+
+cat(
+  if (r3_ok) {
+    "R3 passes the preliminary reliability and factor-loading checks."
+  } else {
+    "R3 does not meet all preliminary criteria and requires further review."
+  }
+)
+```
+
+**Decision:**
+
+`r if (r3_ok) "The results provide preliminary support for creating a composite Employee Proficiency score by averaging Q3–Q6, provided the items have consistent meaning and coding." else "A composite Employee Proficiency score should not be created automatically. The weak or inconsistent items should be reviewed before combining the questions."`
+
+## R6: Operational Effectiveness (Q31–Q34)
+
+This section focuses only on Q31 through Q34, the four metric variables specified for R6.
+
+### Reliability Analysis
+
+Cronbach's alpha is used to determine whether the four operational effectiveness questions exhibit sufficient internal consistency.
+
+```{r}
+# Calculate Cronbach's alpha for R6
+r6_alpha <- psych::alpha(r6_items, check.keys = FALSE)
+
+knitr::kable(
+  data.frame(
+    Measure = "Cronbach's alpha",
+    Value = round(r6_alpha$total$raw_alpha, 3)
+  ),
+  caption = "R6 Reliability Analysis"
+)
+
+knitr::kable(
+  data.frame(
+    Item = r6_names,
+    Corrected_Item_Total = round(
+      r6_alpha$item.stats$r.drop, 3
+    ),
+    Alpha_If_Removed = round(
+      r6_alpha$alpha.drop$raw_alpha, 3
+    )
+  ),
+  caption = "R6 Item-Level Reliability"
+)
+```
+
+**Interpretation:**
+
+The Cronbach's alpha for R6 is **`r sprintf("%.3f", r6_alpha$total$raw_alpha)`**.
+
+`r if (r6_alpha$total$raw_alpha >= 0.70) "The results indicate acceptable internal consistency based on the 0.70 screening guideline." else "The reliability coefficient is below the 0.70 guideline, suggesting that the four questions may not form a sufficiently consistent scale."`
+
+The item-total correlations and alpha-if-deleted values provide additional information about how well each item contributes to the scale.
+
+### Exploratory Factor Analysis
+
+The factor analysis examines whether Q31 through Q34 measure a single underlying operational effectiveness construct.
+
+```{r}
+# One-factor exploratory factor analysis
+r6_fa <- psych::fa(
+  r6_items,
+  nfactors = 1,
+  rotate = "none",
+  fm = "minres"
+)
+
+# Extract factor loadings
+r6_load <- as.numeric(
+  unclass(r6_fa$loadings)[, 1]
+)
+
+# Display factor loadings and communalities
+knitr::kable(
+  data.frame(
+    Item = r6_names,
+    Factor_Loading = round(r6_load, 3),
+    Communality = round(
+      as.numeric(r6_fa$communality), 3
+    )
+  ),
+  caption = "R6 Exploratory Factor Analysis"
+)
+
+cat(
+  "Variance explained:",
+  sprintf(
+    "%.1f%%",
+    100 * r6_fa$Vaccounted["Proportion Var", 1]
+  )
+)
+```
+
+**Interpretation:**
+
+The one-factor solution explains **`r sprintf("%.1f%%", 100 * r6_fa$Vaccounted["Proportion Var", 1])`** of the item variance.
+
+The smallest absolute loading is **`r sprintf("%.3f", min(abs(r6_load)))`**.
+
+Strong loadings on the same factor provide preliminary evidence of convergent validity. Low factor loadings or communalities may indicate that some questions represent different dimensions of operational effectiveness.
+
+### R6: Composite Scale Decision
+
+```{r}
+# Evaluate statistical support for a composite scale
+r6_ok <- isTRUE(
+  is.finite(r6_alpha$total$raw_alpha) &&
+  r6_alpha$total$raw_alpha >= 0.70 &&
+  all(r6_alpha$item.stats$r.drop >= 0.30) &&
+  all(abs(r6_load) >= 0.40) &&
+  (all(r6_load > 0) || all(r6_load < 0))
+)
+
+cat(
+  if (r6_ok) {
+    "R6 passes the preliminary reliability and factor-loading checks."
+  } else {
+    "R6 does not meet all preliminary criteria and requires further review."
+  }
+)
+```
+
+**Decision:**
+
+`r if (r6_ok) "The findings provide preliminary support for a composite Operational Effectiveness scale using Q31–Q34. Before combining them, the conceptual consistency and direction of the survey items should be verified." else "The findings do not justify automatically combining all four operational effectiveness questions into one composite score. The items should remain separate unless further evaluation supports a coherent scale."`
+
+## Discriminant Validity: Combined Factor Analysis
+
+A combined exploratory factor analysis examines whether employee proficiency and operational effectiveness are represented by two distinguishable factors.
+
+This analysis includes all eight questions: Q3–Q6 and Q31–Q34.
+
+```{r}
+# Combine R3 and R6 items
+combined_items <- na.omit(items[all_names])
+
+# Conduct two-factor EFA
+combined_fa <- psych::fa(
+  combined_items,
+  nfactors = 2,
+  rotate = "oblimin",
+  fm = "minres"
+)
+
+# Extract and display factor loadings
+combined_loadings <- unclass(
+  combined_fa$loadings
+)
+
+knitr::kable(
+  data.frame(
+    Item = rownames(combined_loadings),
+    round(combined_loadings, 3),
+    check.names = FALSE
+  ),
+  caption = "Combined Two-Factor Analysis"
+)
+
+# Factor correlation
+cat("Factor correlation matrix:\n")
+print(combined_fa$Phi)
+```
+
+**Interpretation:**
+
+Discriminant validity is supported at an exploratory level when Q3–Q6 primarily load on one factor and Q31–Q34 primarily load on another, with limited cross-loadings.
+
+If the items load on multiple factors without a clear pattern, the distinction between employee proficiency and operational effectiveness requires additional investigation.
+
+These results provide exploratory evidence rather than definitive proof of discriminant validity.
+
+## Summary and Implications for Further Data Analysis
+
+```{r}
+# Summary table
+summary_table <- data.frame(
+  Scale = c(
+    "R3: Employee Proficiency",
+    "R6: Operational Effectiveness"
+  ),
+  Items = c("Q3-Q6", "Q31-Q34"),
+  Sample_Size = c(
+    nrow(r3_items),
+    nrow(r6_items)
+  ),
+  Cronbach_Alpha = round(
+    c(
+      r3_alpha$total$raw_alpha,
+      r6_alpha$total$raw_alpha
+    ),
+    3
+  ),
+  Variance_Explained = sprintf(
+    "%.1f%%",
+    100 * c(
+      r3_fa$Vaccounted["Proportion Var", 1],
+      r6_fa$Vaccounted["Proportion Var", 1]
+    )
+  ),
+  Composite_Decision = c(
+    if (r3_ok) "Provisionally supported" else "Needs review",
+    if (r6_ok) "Provisionally supported" else "Needs review"
+  )
+)
+
+knitr::kable(
+  summary_table,
+  caption = "Summary of Reliability and Factor Analysis"
+)
+```
+
+### Overall Conclusions
+
+The reliability and exploratory factor analyses were performed to evaluate the measurement quality of the two multi-item scales.
+
+For R3, `r if (r3_ok) "the statistical results provide preliminary support for using a composite Employee Proficiency score." else "additional assessment is needed before combining the employee proficiency items into a composite scale."`
+
+For R6, `r if (r6_ok) "the statistical results provide preliminary support for a composite Operational Effectiveness score, subject to conceptual review." else "the results indicate that combining all four items into one scale is not yet justified."`
+
+Composite scores should only be used in later analyses when both statistical evidence and the conceptual meaning of the items support aggregation.
+
+The present analysis does not address the substantive research questions R3 and R6. Those questions will be examined separately in the next stage of the course.
+
+## Appendix: GitHub Links
+
+The completed Quarto report and its HTML output will be published using GitHub Pages.
+
+**GitHub Repository:**
+
+ADD YOUR GITHUB REPOSITORY LINK HERE
+
+**GitHub Pages:**
+
+ADD YOUR GITHUB PAGES LINK HERE
