@@ -1,0 +1,661 @@
+
+---
+title: "Case 31: Summary of Data Analysis for R3, R6, and R4"
+subtitle: "Employees Federal Credit Union"
+author: "Carmen Lia Jimenez"
+
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    theme: cosmo
+    embed-resources: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+## Introduction
+
+This report addresses three research questions from Case 31: Employees Federal Credit Union (EFCU).
+
+- **R3:** Members' attitudes toward employee proficiency.
+- **R6:** Members' perceptions of operational effectiveness.
+- **R4:** Differences in employee proficiency, service awareness, and operational effectiveness based on residence.
+
+The analysis prioritizes descriptive statistics, including means, frequencies, and percentages, before conducting inferential statistical tests.
+
+Reliability and factor analyses were completed in a previous assignment and are not repeated here.
+
+## Data Preparation
+
+```{r}
+#| label: data-preparation
+
+library(haven)
+library(knitr)
+
+possible_files <- c(
+  "Case 31 Data_efcu_4 (1).sav",
+  "Case 31 Data_efcu_4.sav"
+)
+
+found <- possible_files[file.exists(possible_files)]
+
+if (length(found) == 0) {
+  stop("Place the SAV dataset in the same folder as the QMD.")
+}
+
+efcu <- read_sav(found[1])
+
+names(efcu) <- tolower(names(efcu))
+
+get_num <- function(v) {
+  as.numeric(haven::zap_missing(efcu[[v]]))
+}
+
+get_scale <- function(v, allowed) {
+  x <- get_num(v)
+  x[!(x %in% allowed)] <- NA_real_
+  x
+}
+
+fmt_p <- function(p) {
+  ifelse(
+    is.na(p), "NA",
+    ifelse(p < .001, "< .001", sprintf("= %.3f", p))
+  )
+}
+
+show_table <- function(x) {
+  knitr::kable(x, row.names = FALSE)
+}
+
+residence <- factor(
+  get_scale("q38", c(1, 2)),
+  levels = c(1, 2),
+  labels = c("Near headquarters", "Elsewhere")
+)
+
+cat("Observations:", nrow(efcu), "\n")
+cat("Variables:", ncol(efcu), "\n")
+```
+
+```{r}
+#| label: tbl-residence
+#| tbl-cap: "Respondents by residence"
+
+show_table(data.frame(
+  Residence = levels(residence),
+  N = as.integer(table(residence)),
+  Percent = round(
+    100 * as.integer(table(residence)) /
+      sum(!is.na(residence)), 1
+  )
+))
+```
+
+The dataset contains `r nrow(efcu)` respondents. Of these, `r sum(residence == "Near headquarters", na.rm = TRUE)` live near headquarters and `r sum(residence == "Elsewhere", na.rm = TRUE)` live elsewhere.
+
+## R3: Employee Proficiency
+
+### Descriptive Statistics
+
+**Research Question:** What are members' attitudes and beliefs about the proficiency of credit union employees?
+
+Employee proficiency is measured by Q3 through Q6, including courtesy, helpfulness, professionalism, and availability.
+
+```{r}
+#| label: tbl-r3-descriptive
+#| tbl-cap: "Employee proficiency ratings"
+
+r3_vars <- paste0("q", 3:6)
+
+r3_labels <- c(
+  "Courtesy",
+  "Helpfulness",
+  "Professionalism",
+  "Availability"
+)
+
+r3_items <- as.data.frame(
+  lapply(r3_vars, get_scale, allowed = 1:5)
+)
+
+names(r3_items) <- r3_vars
+
+r3_desc <- data.frame(
+  Item = r3_labels,
+  N = sapply(r3_items, function(x) sum(!is.na(x))),
+  Mean = round(sapply(r3_items, mean, na.rm = TRUE), 2),
+  SD = round(sapply(r3_items, sd, na.rm = TRUE), 2)
+)
+
+show_table(r3_desc)
+```
+
+```{r}
+#| label: fig-r3-means
+#| fig-cap: "Mean employee proficiency ratings"
+
+barplot(
+  r3_desc$Mean,
+  names.arg = r3_labels,
+  ylim = c(0, 5),
+  ylab = "Mean rating",
+  main = "Employee Proficiency"
+)
+
+abline(h = 3, lty = 2)
+```
+
+```{r}
+#| label: tbl-r3-index
+#| tbl-cap: "Employee Proficiency Index"
+
+r3_index <- rowMeans(
+  r3_items,
+  na.rm = FALSE
+)
+
+r3_valid <- na.omit(r3_index)
+
+show_table(data.frame(
+  N = length(r3_valid),
+  Mean = round(mean(r3_valid), 3),
+  SD = round(sd(r3_valid), 3)
+))
+```
+
+### One-Sample T-Test
+
+A one-sample t-test evaluates whether employee proficiency ratings differ from the neutral midpoint of 3.
+
+```{r}
+#| label: tbl-r3-test
+#| tbl-cap: "One-sample t-test for employee proficiency"
+
+r3_test <- t.test(r3_valid, mu = 3)
+
+show_table(data.frame(
+  Mean = round(mean(r3_valid), 3),
+  T = round(unname(r3_test$statistic), 3),
+  DF = round(unname(r3_test$parameter), 2),
+  P = fmt_p(r3_test$p.value),
+  CI_Lower = round(r3_test$conf.int[1], 3),
+  CI_Upper = round(r3_test$conf.int[2], 3)
+))
+```
+
+### R3 Results and Interpretation
+
+Members reported generally favorable perceptions of employee proficiency, with an average index score of **`r sprintf("%.2f", mean(r3_valid))` out of 5** (SD = `r sprintf("%.2f", sd(r3_valid))`).
+
+The highest-rated employee characteristic was **`r r3_desc$Item[which.max(r3_desc$Mean)]`**, while **`r r3_desc$Item[which.min(r3_desc$Mean)]`** received the lowest average rating.
+
+The overall rating was significantly above the neutral midpoint (*t*(`r round(unname(r3_test$parameter), 2)`) = `r round(unname(r3_test$statistic), 2)`, *p* `r fmt_p(r3_test$p.value)`).
+
+These findings suggest that employees are generally perceived as courteous, helpful, professional, and available. The relatively lower-rated characteristics may provide opportunities for improvement.
+
+## R6: Operational Effectiveness
+
+### Descriptive Statistics
+
+**Research Question:** What are members' attitudes and beliefs about how effectively the credit union is operated?
+
+Operational effectiveness is examined using Q9–Q12, Q31–Q34, and Q37. The variables are evaluated separately because they represent different operational dimensions and measurement scales.
+
+```{r}
+#| label: tbl-r6-descriptive
+#| tbl-cap: "Operational effectiveness rating statistics"
+
+r6_vars <- c(
+  "q10_r", "q31", "q32",
+  "q33", "q34", "q37_r"
+)
+
+r6_midpoints <- c(2.5, 3, 3, 3, 3, 3)
+
+r6_desc <- do.call(rbind, lapply(
+  seq_along(r6_vars),
+  function(i) {
+
+    v <- r6_vars[i]
+
+    allowed <- if (v == "q10_r") 1:4 else 1:5
+    x <- get_scale(v, allowed)
+
+    data.frame(
+      Variable = toupper(v),
+      N = sum(!is.na(x)),
+      Mean = round(mean(x, na.rm = TRUE), 3),
+      SD = round(sd(x, na.rm = TRUE), 3),
+      Midpoint = r6_midpoints[i]
+    )
+  }
+))
+
+show_table(r6_desc)
+```
+
+### Frequency Distributions
+
+Categorical and ordinal operational items are summarized using frequencies and percentages.
+
+```{r}
+#| label: tbl-r6-frequencies
+#| tbl-cap: "Operational effectiveness response distributions"
+
+r6_cat_vars <- c("q9_r", "q11", "q12")
+
+r6_freq <- do.call(rbind, lapply(
+  r6_cat_vars,
+  function(v) {
+
+    x <- get_num(v)
+    tab <- table(x)
+
+    data.frame(
+      Variable = toupper(v),
+      Response = names(tab),
+      Frequency = as.integer(tab),
+      Percentage = round(
+        100 * as.integer(tab) / sum(tab), 1
+      )
+    )
+  }
+))
+
+show_table(r6_freq)
+```
+
+### One-Sample T-Tests
+
+The appropriate rating items are compared with their respective scale midpoints. Q10r has a four-point scale, while the other ratings use five-point scales.
+
+```{r}
+#| label: tbl-r6-tests
+#| tbl-cap: "One-sample t-tests for operational ratings"
+
+r6_tests <- do.call(rbind, lapply(
+  seq_along(r6_vars),
+  function(i) {
+
+    v <- r6_vars[i]
+    midpoint <- r6_midpoints[i]
+
+    allowed <- if (v == "q10_r") 1:4 else 1:5
+    x <- na.omit(get_scale(v, allowed))
+
+    test <- t.test(x, mu = midpoint)
+
+    data.frame(
+      Variable = toupper(v),
+      Mean = round(mean(x), 3),
+      T = round(unname(test$statistic), 3),
+      DF = round(unname(test$parameter), 2),
+      P = test$p.value
+    )
+  }
+))
+
+r6_tests$P_Adjusted <- p.adjust(
+  r6_tests$P,
+  method = "holm"
+)
+
+r6_display <- r6_tests
+
+r6_display$P <- fmt_p(r6_display$P)
+r6_display$P_Adjusted <- fmt_p(r6_display$P_Adjusted)
+
+show_table(r6_display)
+```
+
+### R6 Results and Interpretation
+
+The findings reveal variation across different dimensions of operational effectiveness.
+
+Among Q31–Q34, **Q31 received the highest mean rating** (`r round(mean(get_scale("q31", 1:5), na.rm = TRUE), 2)`), while **Q34 received the lowest** (`r round(mean(get_scale("q34", 1:5), na.rm = TRUE), 2)`).
+
+Across the six numerical rating items, `r sum(r6_tests$P_Adjusted < .05)` showed statistically significant differences from their respective scale midpoints after adjustment.
+
+The distribution of Q9r, Q11, and Q12 responses provides additional insight into operational processes and members' experiences.
+
+Overall, operational effectiveness is best understood through these individual dimensions rather than one combined score. Lower-rated aspects warrant further investigation.
+
+## R4a: Employee Proficiency by Residence
+
+### Group Descriptive Statistics
+
+**Research Question:** Do members living near headquarters differ from members living elsewhere in their evaluations of employee proficiency?
+
+```{r}
+#| label: tbl-r4a-descriptive
+#| tbl-cap: "Employee proficiency by residence"
+
+r4a_data <- na.omit(data.frame(
+  Residence = residence,
+  Score = r3_index
+))
+
+r4a_groups <- split(
+  r4a_data$Score,
+  r4a_data$Residence
+)
+
+r4a_desc <- data.frame(
+  Residence = names(r4a_groups),
+  N = sapply(r4a_groups, length),
+  Mean = round(sapply(r4a_groups, mean), 3),
+  SD = round(sapply(r4a_groups, sd), 3)
+)
+
+show_table(r4a_desc)
+```
+
+### Welch Independent-Samples T-Test
+
+```{r}
+#| label: tbl-r4a-test
+#| tbl-cap: "Welch t-test: Employee proficiency by residence"
+
+r4a_test <- t.test(
+  Score ~ Residence,
+  data = r4a_data
+)
+
+show_table(data.frame(
+  T = round(unname(r4a_test$statistic), 3),
+  DF = round(unname(r4a_test$parameter), 2),
+  P = fmt_p(r4a_test$p.value),
+  CI_Lower = round(r4a_test$conf.int[1], 3),
+  CI_Upper = round(r4a_test$conf.int[2], 3)
+))
+```
+
+### R4a Results and Interpretation
+
+Members living near headquarters reported an average employee proficiency score of `r round(mean(r4a_data$Score[r4a_data$Residence == "Near headquarters"]), 2)`, compared with `r round(mean(r4a_data$Score[r4a_data$Residence == "Elsewhere"]), 2)` among those living elsewhere.
+
+The difference was `r if (r4a_test$p.value < .05) "statistically significant" else "not statistically significant"` (Welch *t*(`r round(unname(r4a_test$parameter), 2)`) = `r round(unname(r4a_test$statistic), 2)`, *p* `r fmt_p(r4a_test$p.value)`).
+
+`r if (r4a_test$p.value < .05) "These findings indicate that employee proficiency perceptions differ according to residence." else "These findings suggest that members evaluate employee proficiency similarly regardless of whether they live near headquarters or elsewhere."`
+
+## R4b: Service Awareness by Residence
+
+### Cross-Tabulations and Association Tests
+
+**Research Question:** Does awareness and use of credit union services differ according to residence?
+
+Q13r through Q26r measure service awareness and use:
+
+- 1 = Unaware
+- 2 = Aware but not used
+- 3 = Aware and used
+
+```{r}
+#| label: tbl-r4b-descriptive
+#| tbl-cap: "Service usage percentages by residence"
+
+service_vars <- paste0("q", 13:26, "_r")
+
+service_names <- c(
+  "Regular share accounts",
+  "Special subaccounts",
+  "Christmas club accounts",
+  "Individual retirement accounts",
+  "Mastercard credit cards",
+  "Signature loans",
+  "New car loans",
+  "Late model car loans",
+  "Older model car loans",
+  "Household goods loans",
+  "Recreational loans",
+  "Share collateralized loans",
+  "IRA loans",
+  "Line of credit loans"
+)
+
+r4b_desc <- do.call(rbind, lapply(
+  seq_along(service_vars),
+  function(i) {
+
+    x <- get_scale(service_vars[i], 1:3)
+
+    near <- x[residence == "Near headquarters"]
+    far <- x[residence == "Elsewhere"]
+
+    data.frame(
+      Service = service_names[i],
+      Used_Near = round(
+        100 * mean(near == 3, na.rm = TRUE), 1
+      ),
+      Used_Elsewhere = round(
+        100 * mean(far == 3, na.rm = TRUE), 1
+      ),
+      Overall_Used = round(
+        100 * mean(x == 3, na.rm = TRUE), 1
+      )
+    )
+  }
+))
+
+show_table(r4b_desc)
+```
+
+### Chi-Square and Fisher's Exact Tests
+
+```{r}
+#| label: tbl-r4b-tests
+#| tbl-cap: "Association between residence and service awareness"
+
+categorical_test <- function(v) {
+
+  x <- get_num(v)
+  tab <- table(residence, x)
+
+  if (nrow(tab) < 2 || ncol(tab) < 2) {
+    return(data.frame(
+      Variable = toupper(v),
+      Test = "Insufficient categories",
+      P = NA_real_
+    ))
+  }
+
+  chi <- suppressWarnings(
+    chisq.test(tab, correct = FALSE)
+  )
+
+  if (any(chi$expected < 5)) {
+
+    result <- fisher.test(
+      tab,
+      simulate.p.value = TRUE,
+      B = 10000
+    )
+
+    method <- "Fisher (simulated)"
+
+  } else {
+
+    result <- chi
+    method <- "Chi-square"
+  }
+
+  data.frame(
+    Variable = toupper(v),
+    Test = method,
+    P = result$p.value
+  )
+}
+
+set.seed(123)
+
+r4b_tests <- do.call(rbind, lapply(
+  service_vars,
+  categorical_test
+))
+
+r4b_tests$P_Adjusted <- p.adjust(
+  r4b_tests$P,
+  method = "holm"
+)
+
+r4b_display <- r4b_tests
+
+r4b_display$P <- fmt_p(r4b_display$P)
+r4b_display$P_Adjusted <- fmt_p(
+  r4b_display$P_Adjusted
+)
+
+show_table(r4b_display)
+```
+
+### R4b Results and Interpretation
+
+The most frequently used service was **`r r4b_desc$Service[which.max(r4b_desc$Overall_Used)]`**, reported as used by `r max(r4b_desc$Overall_Used)`% of respondents.
+
+Service-use percentages varied between the two residence groups.
+
+However, `r sum(r4b_tests$P_Adjusted < .05, na.rm = TRUE)` of the 14 association tests remained statistically significant after Holm adjustment.
+
+`r if (any(r4b_tests$P_Adjusted < .05, na.rm = TRUE)) "The findings indicate that some service-awareness patterns are associated with residence." else "The findings do not provide statistically reliable evidence that service-awareness patterns differ by residence."`
+
+These results describe associations rather than causal relationships.
+
+## R4c: Operational Effectiveness by Residence
+
+### Descriptive Statistics and Welch T-Tests
+
+**Research Question:** Do operational effectiveness perceptions differ by residence?
+
+```{r}
+#| label: tbl-r4c-numerical
+#| tbl-cap: "Operational ratings and Welch t-tests by residence"
+
+r4c_vars <- c(
+  "q10_r", "q31", "q32",
+  "q33", "q34", "q37_r"
+)
+
+r4c_numeric <- do.call(rbind, lapply(
+  r4c_vars,
+  function(v) {
+
+    allowed <- if (v == "q10_r") 1:4 else 1:5
+
+    x <- get_scale(v, allowed)
+
+    dat <- na.omit(data.frame(
+      Residence = residence,
+      Score = x
+    ))
+
+    near <- dat$Score[
+      dat$Residence == "Near headquarters"
+    ]
+
+    far <- dat$Score[
+      dat$Residence == "Elsewhere"
+    ]
+
+    test <- t.test(
+      Score ~ Residence,
+      data = dat
+    )
+
+    data.frame(
+      Variable = toupper(v),
+      Mean_Near = round(mean(near), 3),
+      Mean_Elsewhere = round(mean(far), 3),
+      T = round(unname(test$statistic), 3),
+      DF = round(unname(test$parameter), 2),
+      P = test$p.value
+    )
+  }
+))
+
+r4c_numeric$P_Adjusted <- p.adjust(
+  r4c_numeric$P,
+  method = "holm"
+)
+
+r4c_display <- r4c_numeric
+
+r4c_display$P <- fmt_p(r4c_display$P)
+r4c_display$P_Adjusted <- fmt_p(
+  r4c_display$P_Adjusted
+)
+
+show_table(r4c_display)
+```
+
+### Categorical Operational Measures
+
+```{r}
+#| label: tbl-r4c-categorical
+#| tbl-cap: "Categorical operational measures by residence"
+
+set.seed(456)
+
+r4c_cat_vars <- c("q9_r", "q11", "q12")
+
+r4c_cat <- do.call(rbind, lapply(
+  r4c_cat_vars,
+  categorical_test
+))
+
+r4c_cat$P_Adjusted <- p.adjust(
+  r4c_cat$P,
+  method = "holm"
+)
+
+r4c_cat_display <- r4c_cat
+
+r4c_cat_display$P <- fmt_p(
+  r4c_cat_display$P
+)
+
+r4c_cat_display$P_Adjusted <- fmt_p(
+  r4c_cat_display$P_Adjusted
+)
+
+show_table(r4c_cat_display)
+```
+
+### R4c Results and Interpretation
+
+The numerical operational effectiveness comparisons showed `r sum(r4c_numeric$P_Adjusted < .05, na.rm = TRUE)` statistically significant differences after Holm adjustment.
+
+The categorical operational measures showed `r sum(r4c_cat$P_Adjusted < .05, na.rm = TRUE)` statistically significant associations after adjustment.
+
+The lowest unadjusted p-value among the numerical measures was observed for **`r r4c_numeric$Variable[which.min(r4c_numeric$P)]`**.
+
+`r if (sum(r4c_numeric$P_Adjusted < .05, na.rm = TRUE) + sum(r4c_cat$P_Adjusted < .05, na.rm = TRUE) == 0) "Overall, the results do not establish robust residence-related differences in the selected operational effectiveness measures." else "Some operational effectiveness measures showed statistically significant residence-related differences."`
+
+The findings should be interpreted cautiously because statistical associations do not establish causation.
+
+## Overall Findings and Implications
+
+This analysis addressed R3, R6, and the three components of R4.
+
+**R3:** Members generally provided favorable employee proficiency evaluations, with an average composite score of `r round(mean(r3_valid), 2)`.
+
+**R6:** Operational effectiveness varied across different aspects of credit union services. Q31 received a relatively high average rating, while Q34 was comparatively lower.
+
+**R4a:** Differences in employee proficiency perceptions by residence were `r if (r4a_test$p.value < .05) "statistically significant" else "not statistically significant"`.
+
+**R4b:** `r sum(r4b_tests$P_Adjusted < .05, na.rm = TRUE)` service-awareness comparisons remained significant after adjustment.
+
+**R4c:** `r sum(r4c_numeric$P_Adjusted < .05, na.rm = TRUE)` numerical and `r sum(r4c_cat$P_Adjusted < .05, na.rm = TRUE)` categorical comparisons remained significant after adjustment.
+
+Overall, the credit union can build on generally favorable employee evaluations while investigating lower-rated operational characteristics and potential opportunities for continuous improvement.
+
+## Appendix: GitHub Links
+
+- **GitHub Repository:** ADD YOUR GITHUB REPOSITORY URL
+- **GitHub Pages:** ADD YOUR PUBLISHED HTML URL
+
