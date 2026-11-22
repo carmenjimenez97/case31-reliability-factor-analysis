@@ -384,14 +384,15 @@ Composite scores should only be used in later analyses when both statistical evi
 
 The present analysis does not address the substantive research questions R3 and R6. Those questions will be examined separately in the next stage of the course.
 
+
 ## Appendix: GitHub Links
 
-The completed Quarto report and its HTML output will be published using GitHub Pages.
+The completed Quarto report and its HTML output are available through the following links:
 
 **GitHub Repository:**
 
-ADD YOUR GITHUB REPOSITORY LINK HERE
+[View GitHub Repository](https://github.com/carmenjimenez97/case31-reliability-factor-analysis)
 
 **GitHub Pages:**
 
-ADD YOUR GITHUB PAGES LINK HERE
+[View Published HTML Report](https://carmenjimenez97.github.io/case31-reliability-factor-analysis/IC_Case31_Reliability_Factor_Analysis.html)
